@@ -1,7 +1,7 @@
 import requests
 import time
 import numpy as np
-from datetime import datetime
+from datetime import datetime, timezone
 from supabase import create_client
 import os
 
@@ -13,10 +13,7 @@ SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 if not SUPABASE_URL or not SUPABASE_KEY:
     raise ValueError("❌ 环境变量未正确读取")
 
-print("环境变量读取成功", flush=True)
-
 supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
-print("Supabase 初始化成功", flush=True)
 
 BASE_URL = "https://fapi.binance.com"
 SYMBOL = "ETHUSDT"
@@ -27,36 +24,57 @@ oi_history = []
 price_history = []
 volume_history = []
 
+def safe_get_json(url, params):
+    r = requests.get(url, params=params, timeout=15)
+    data = r.json()
+    return data
+
 while True:
     try:
-        print("开始新一轮采集:", datetime.utcnow(), flush=True)
+        print("开始新一轮采集:", datetime.now(timezone.utc), flush=True)
 
-        kline = requests.get(
+        # ========= KLINE =========
+        kline = safe_get_json(
             f"{BASE_URL}/fapi/v1/klines",
-            params={"symbol": SYMBOL, "interval": INTERVAL, "limit": 100},
-            timeout=15
-        ).json()
+            {"symbol": SYMBOL, "interval": INTERVAL, "limit": 100},
+        )
+
+        if not isinstance(kline, list):
+            print("KLINE异常返回:", kline, flush=True)
+            time.sleep(60)
+            continue
 
         closes = [float(x[4]) for x in kline]
         volumes = [float(x[5]) for x in kline]
         price = closes[-1]
 
-        oi = float(
-            requests.get(
-                f"{BASE_URL}/fapi/v1/openInterest",
-                params={"symbol": SYMBOL},
-                timeout=15
-            ).json()["openInterest"]
+        # ========= OI =========
+        oi_data = safe_get_json(
+            f"{BASE_URL}/fapi/v1/openInterest",
+            {"symbol": SYMBOL},
         )
 
-        long_ratio = float(
-            requests.get(
-                f"{BASE_URL}/futures/data/globalLongShortAccountRatio",
-                params={"symbol": SYMBOL, "period": "5m", "limit": 1},
-                timeout=15
-            ).json()[0]["longShortRatio"]
+        if "openInterest" not in oi_data:
+            print("OI异常返回:", oi_data, flush=True)
+            time.sleep(60)
+            continue
+
+        oi = float(oi_data["openInterest"])
+
+        # ========= 多空比 =========
+        ratio_data = safe_get_json(
+            f"{BASE_URL}/futures/data/globalLongShortAccountRatio",
+            {"symbol": SYMBOL, "period": "5m", "limit": 1},
         )
 
+        if not isinstance(ratio_data, list) or len(ratio_data) == 0:
+            print("多空比异常返回:", ratio_data, flush=True)
+            time.sleep(60)
+            continue
+
+        long_ratio = float(ratio_data[0]["longShortRatio"])
+
+        # ========= 后续计算（保持不变） =========
         crowd_score = oi * long_ratio
 
         crowd_history.append(crowd_score)
@@ -66,7 +84,6 @@ while True:
 
         inc_4h = crowd_history[-1] - crowd_history[-48] if len(crowd_history) >= 48 else None
         inc_8h = crowd_history[-1] - crowd_history[-96] if len(crowd_history) >= 96 else None
-
         volume_acc = volume_history[-1] - volume_history[-5] if len(volume_history) >= 5 else None
 
         divergence = None
@@ -86,7 +103,7 @@ while True:
                     extreme_flag = "极度拥挤-空"
 
         data = {
-            "time": datetime.utcnow().isoformat(),
+            "time": datetime.now(timezone.utc).isoformat(),
             "price": price,
             "open_interest": oi,
             "long_ratio": long_ratio,
@@ -100,10 +117,9 @@ while True:
 
         supabase.table("eth_monitor").insert(data).execute()
 
-        print("写入成功:", datetime.utcnow(), flush=True)
+        print("写入成功", flush=True)
 
     except Exception as e:
-        print("发生错误:", e, flush=True)
+        print("发生未知错误:", e, flush=True)
 
     time.sleep(300)
-
