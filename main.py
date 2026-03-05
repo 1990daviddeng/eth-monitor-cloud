@@ -5,8 +5,8 @@ from datetime import datetime
 from supabase import create_client
 import os
 
-SUPABASE_URL = os.getenv("https://ixzxhljfkfjleruaecuc.supabase.co")
-SUPABASE_KEY = os.getenv("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Iml4enhobGpma2ZqbGVydWFlY3VjIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3MjY3MTg4MCwiZXhwIjoyMDg4MjQ3ODgwfQ.GLos0fPOYkVnGu953l15Uv_6xGr33xiYeQKYXs9rs-Q")
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_KEY = os.getenv("SUPABASE_KEY")
 # ==============================
 # 🔐 填入你的 Supabase 信息
 # ==============================
@@ -140,5 +140,6 @@ while True:
 
     except Exception as e:
         print("错误:", e)
+
 
     time.sleep(300)  # 每5分钟执行一次
