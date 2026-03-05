@@ -1,3 +1,4 @@
+print("===== 程序启动成功 =====")
 import requests
 import time
 import numpy as np
@@ -143,3 +144,4 @@ while True:
 
 
     time.sleep(300)  # 每5分钟执行一次
+
